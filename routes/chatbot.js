@@ -323,14 +323,13 @@ router.post('/chat', async (req, res) => {
     
     // Generate response (fallback first)
     let reply = generateFallbackResponse(message);
-    let searchResults = [];
-    
+
     // Extract and process search queries
     const searchQueries = extractSearchQueries(reply);
-    
+
     // Clean reply
     reply = cleanResponse(reply);
-    
+
     // Search for products from API, fallback to hardcoded if API fails
     let searchResults = [];
     for (const query of searchQueries) {
