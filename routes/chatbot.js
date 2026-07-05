@@ -2,7 +2,15 @@ const express = require('express');
 const router = express.Router();
 
 const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
-const MODEL_VERSION = 'google/gemini-2.5-flash';
+
+// Get latest model version hash
+async function getModelVersion(token) {
+  const response = await fetch('https://api.replicate.com/v1/models/google/gemini-2.5-flash', {
+    headers: { 'Authorization': `Token ${token}` }
+  });
+  const data = await response.json();
+  return data.latest_version?.id;
+}
 
 // Product catalog for AuraPC
 const PRODUCT_CATALOG = `
@@ -133,6 +141,12 @@ router.post('/chat', async (req, res) => {
     // Add current message
     conversationText += `User: ${message}\nAssistant:`;
 
+    // Get model version hash first
+    const versionId = await getModelVersion(apiToken);
+    if (!versionId) {
+      return res.status(502).json({ error: 'Cannot get model version' });
+    }
+
     // Create prediction on Replicate
     const createResponse = await fetch(REPLICATE_API_URL, {
       method: 'POST',
@@ -141,7 +155,7 @@ router.post('/chat', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        version: MODEL_VERSION,
+        version: versionId,
         input: {
           prompt: `${SYSTEM_PROMPT}\n\n${conversationText}`,
           max_tokens: 1024,
