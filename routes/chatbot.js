@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const REPLICATE_API_URL = 'https://api.replicate.com/v1/models/google/gemini-2.0-flash-exp:prediction';
+const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
+const MODEL_VERSION = 'google/gemini-2.5-flash';
 
 // Product catalog for AuraPC
 const PRODUCT_CATALOG = `
@@ -140,6 +141,7 @@ router.post('/chat', async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
+        version: MODEL_VERSION,
         input: {
           prompt: `${SYSTEM_PROMPT}\n\n${conversationText}`,
           max_tokens: 1024,
