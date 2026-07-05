@@ -1,52 +1,19 @@
-# AuraPC Chatbot Backend
-
-Node.js/Express backend for AuraPC AI chatbot using Google Gemini 2.0 Flash via Replicate.
-
-## Features
-- Chat endpoint with conversation history
-- Product catalog for PC components
-- Vietnamese language support
-- Replicate API integration
-
-## Setup
-
-```bash
-npm install
-```
-
-## Configure
-
-Create `.env` file:
-```env
-REPLICATE_API_TOKEN=your_replicate_token_here
-PORT=3000
-NODE_ENV=production
-```
-
-Get Replicate API token: https://replicate.com/account/api-tokens
-
-## Run
-
-```bash
-npm start        # Production
-npm run dev      # Development (with nodemon)
-```
-
-## API
-
-### POST /api/chat
-```json
 {
-  "message": "Tư vấn PC gaming 20 triệu",
-  "history": [
-    {"role": "user", "content": "..."},
-    {"role": "model", "content": "..."}
-  ]
+  "name": "aura-chatbot-backend",
+  "version": "1.0.0",
+  "description": "AuraPC Chatbot Backend - Gemini API proxy for mobile app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
-```
-
-### GET /api/catalog
-Returns product catalog.
-
-### GET /health
-Health check endpoint.
