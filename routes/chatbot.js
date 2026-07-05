@@ -188,6 +188,30 @@ function cleanResponse(text) {
   return text.replace(/\[SEARCH:[^\]]+\]/gi, '').trim();
 }
 
+// Fallback products (hardcoded for demo - replace with API data in production)
+const FALLBACK_PRODUCTS = [
+  { id: '1', name: 'PC Gaming Aura RTX 4060', price: 18990000, category: 'PC Gaming', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=PC+RTX+4060', brand: 'AuraPC', rating: 4.8, inStock: true },
+  { id: '2', name: 'Intel Core i5-14400F', price: 5490000, category: 'CPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Intel+i5-14400F', brand: 'Intel', rating: 4.7, inStock: true },
+  { id: '3', name: 'NVIDIA RTX 4070 Super', price: 15990000, category: 'GPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RTX+4070+Super', brand: 'NVIDIA', rating: 4.9, inStock: true },
+  { id: '4', name: 'RAM DDR5 32GB Corsair', price: 2990000, category: 'RAM', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RAM+DDR5+32GB', brand: 'Corsair', rating: 4.6, inStock: true },
+  { id: '5', name: 'SSD Samsung 990 PRO 1TB', price: 3290000, category: 'SSD', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=SSD+990+PRO', brand: 'Samsung', rating: 4.8, inStock: true },
+  { id: '6', name: 'ASUS ROG Strix RTX 4080', price: 32990000, category: 'GPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RTX+4080', brand: 'ASUS', rating: 4.9, inStock: true },
+  { id: '7', name: 'AMD Ryzen 7 7800X3D', price: 12490000, category: 'CPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Ryzen+7800X3D', brand: 'AMD', rating: 4.9, inStock: true },
+  { id: '8', name: 'Monitor LG 27GP850 165Hz', price: 8990000, category: 'Monitor', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=LG+27GP850', brand: 'LG', rating: 4.7, inStock: true },
+  { id: '9', name: 'Case Lian Li O11 Dynamic', price: 4590000, category: 'Case', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Lian+Li+O11', brand: 'Lian Li', rating: 4.8, inStock: true },
+  { id: '10', name: 'PSU Corsair RM850x 850W', price: 3990000, category: 'PSU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Corsair+RM850x', brand: 'Corsair', rating: 4.9, inStock: true }
+];
+
+// Search fallback products
+function searchFallbackProducts(query) {
+  const lowerQuery = query.toLowerCase();
+  return FALLBACK_PRODUCTS.filter(p => 
+    p.name.toLowerCase().includes(lowerQuery) ||
+    p.category.toLowerCase().includes(lowerQuery) ||
+    p.brand.toLowerCase().includes(lowerQuery)
+  ).slice(0, 5);
+}
+
 // Fallback responses
 function generateFallbackResponse(message) {
   const lowerMsg = message.toLowerCase();
@@ -307,11 +331,16 @@ router.post('/chat', async (req, res) => {
     // Clean reply
     reply = cleanResponse(reply);
     
-    // Search for products
+    // Search for products from API, fallback to hardcoded if API fails
+    let searchResults = [];
     for (const query of searchQueries) {
       const results = await searchProducts(query, 5);
       if (results.length > 0) {
         searchResults = searchResults.concat(results);
+      } else {
+        // Fallback to hardcoded products
+        const fallbackResults = searchFallbackProducts(query);
+        searchResults = searchResults.concat(fallbackResults);
       }
     }
     
