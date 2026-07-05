@@ -327,6 +327,12 @@ function generateFallbackResponse(message, userInfo = null) {
   if (lowerMsg.includes('pc') || lowerMsg.includes('máy') || lowerMsg.includes('cấu hình') || lowerMsg.includes('may tinh')) {
     if (lowerMsg.includes('15') || lowerMsg.includes('10')) {
       return '[SEARCH:PC van phong 10 trieu]\n\nVoi 10-15 trieu, PC van phong tot:\n- Intel i3-14100, 8GB RAM, 256GB SSD\n- AMD Ryzen 5 5600G (co GPU tich hop)\n\nBan muon tim them khong?';
+    } else if (lowerMsg.includes('20') || lowerMsg.includes('25')) {
+      return '[SEARCH:PC gaming 20 trieu]\n\nVoi 20-25 trieu, PC gaming 1080p:\n- Intel i5-14400 + RTX 4060\n- AMD Ryzen 5 7600X + RTX 4060\n\nBan muon tu van them khong?';
+    } else if (lowerMsg.includes('30') || lowerMsg.includes('35') || lowerMsg.includes('40')) {
+      return '[SEARCH:PC gaming 30 trieu]\n\nVoi 30-40 trieu, PC manh:\n- Intel i7-14700K + RTX 4070 SUPER\n- AMD Ryzen 7 7800X3D + RTX 4070 Ti\n\nBan muon cau hinh nao hon?';
+    }
+    return '[SEARCH:PC gaming]\n\nDe tu van tot nhat, ban cho biet ngan sach va muc dich su dung nhe?';
   }
   
   if (lowerMsg.includes('cpu') || lowerMsg.includes('vi xử lý') || lowerMsg.includes('chip')) {
