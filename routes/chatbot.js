@@ -83,8 +83,40 @@ router.post('/chat', async (req, res) => {
     }
 
     const apiToken = process.env.REPLICATE_API_TOKEN;
+    
+    // Fallback responses when no API token (for testing)
+    const lowerMsg = message.toLowerCase();
     if (!apiToken) {
-      return res.status(500).json({ error: 'Chatbot not configured' });
+      const fallbacks = {
+        'xin chao': 'Xin chào! 👋 Tôi là AruBot, trợ lý AI của AuraPC. Tôi có thể giúp bạn tư vấn về PC và linh kiện máy tính. Bạn cần tôi giúp gì hôm nay?',
+        'chao': 'Xin chào! 👋 Tôi là AruBot, trợ lý AI của AuraPC. Bạn cần tư vấn gì hôm nay?',
+        'hello': 'Hello! 👋 I am AruBot, the AI assistant of AuraPC. How can I help you today?',
+        'hi': 'Hi! 👋 Tôi là AruBot. Bạn cần tư vấn về PC không?',
+      };
+      
+      let reply = 'Xin chào! 👋 Tôi là AruBot, trợ lý AI của AuraPC. Hiện tại tôi đang được cập nhật. Vui lòng thử lại sau hoặc liên hệ hotline để được hỗ trợ nhanh nhất!';
+      
+      for (const [key, value] of Object.entries(fallbacks)) {
+        if (lowerMsg.includes(key)) {
+          reply = value;
+          break;
+        }
+      }
+      
+      // Check for keywords
+      if (lowerMsg.includes('pc') || lowerMsg.includes('máy') || lowerMsg.includes('game')) {
+        reply = '🎮 Tôi có thể tư vấn PC gaming theo ngân sách của bạn!\n\nVí dụ:\n• 15 triệu: PC văn phòng mạnh\n• 20-25 triệu: PC gaming tầm trung\n• 30-40 triệu: PC gaming cao cấp\n• 50+ triệu: PC enthusiast\n\nBạn muốn tư vấn cấu hình nào?';
+      } else if (lowerMsg.includes('cpu') || lowerMsg.includes('vi xử lý') || lowerMsg.includes('chip')) {
+        reply = '🖥️ Tư vấn CPU:\n\n• Intel: i3 (văn phòng), i5 ( gaming), i7/i9 (cao cấp)\n• AMD: Ryzen 3, 5, 7, 9 tương ứng\n\nBạn cần tư vấn thêm không?';
+      } else if (lowerMsg.includes('gpu') || lowerMsg.includes('card') || lowerMsg.includes('đồ họa')) {
+        reply = '🎨 Tư vấn GPU:\n\n• NVIDIA: RTX 4060, 4070, 4080, 4090\n• AMD: RX 6600, 6700, 6800, 6900\n\nCard nào bạn quan tâm?';
+      }
+      
+      return res.json({
+        success: true,
+        reply,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // Build conversation context
