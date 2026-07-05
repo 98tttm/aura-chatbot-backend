@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
+const AURAPC_API = 'https://aurapc-backend.onrender.com/api';
 
 // Get latest model version hash
 async function getModelVersion(token) {
@@ -17,173 +18,274 @@ async function getModelVersion(token) {
   }
 }
 
-// Product catalog - concise version
-const PRODUCT_CATALOG = `
-CPU: Intel i3-14100, i5-14400/14600K, i7-14700K, i9-14900K | AMD Ryzen 5 5600X/7600X, Ryzen 7 7700X/7800X3D, Ryzen 9 7900X/7950X
-GPU: NVIDIA RTX 3050, 3060, 4060, 4070/4070S, 4080S, 4090 | AMD RX 6600, 6700, 6800, 6900, 7800XT, 7900XT/XTX
-RAM: DDR4 16-32GB (Kingston/Corsair/G.Skill 3200-3600MHz) | DDR5 32-64GB (Kingston/Corsair/G.Skill 5600-6000MHz)
-SSD: Samsung 990 PRO, 980 PRO, 870 EVO | WD Black SN850X | Kingston Fury | Crucial P5 Plus
-Mainboard: Intel Z790/B760, B660 | AMD X670E/B650, X570/B550
-PSU: Corsair RM650/750/850/1000x | Seasonic Focus/PRIME | be quiet! | MSI MAG | 550-1000W, 80+ Bronze/Gold/Platinum
-Case: Lian Li O11, Lancool II | NZXT H7/H9 | Fractal Torrent/Pop | be quiet! Pure Base | Corsair 4000D/5000D
-Cooling: AIO 240/280/360mm (NZXT Kraken, Corsair iCUE, ASUS ROG) | Air: Noctua NH-D15/U12A, be quiet! Dark Rock
-Monitor: 24-34", 1080p-4K, 60-240Hz | ASUS ROG/TUF, LG UltraGear, Samsung Odyssey, Dell Alienware
-Laptop: Gaming (ASUS ROG, MSI Raider, Lenovo Legion) | Office (ASUS ZenBook, Dell XPS, Lenovo Yoga) | Mac alternatives
-`;
-
-// Compact system prompt
-const SYSTEM_PROMPT = `Ban la AruBot - tro ly AI chuyen ve PC va linh kien tai AuraPC Vietnam.
-
-QUY TAC:
-1. Tra loi NGAN GON (toi da 1-2 cau)
-2. Chi neu ten san pham CU THE khi go y
-3. Neu hoi gia -> "Gia thay doi, kiem tra tren app AuraPC"
-4. Neu hoi cau hinh -> hoi ngan sach truoc
-
-CATALOG:
-${PRODUCT_CATALOG}
-
-VI DU:
-Hoi: "PC 20 trieu"
-Tra loi: "Voi 20 trieu, toi go y:\n• CPU: i5-14400\n• GPU: RTX 4060\n• RAM: 16GB DDR4\n\nBan muon tim hieu them khong?"
-
-Hoi: "Tan nhiet i9"
-Tra loi: "Cho i9, ban nen dung NZXT Kraken X73 360mm hoac Noctua NH-D15. Ban thich AIO hay air cooler?"
-
-Hoi: "RTX 4070 gia bao nhieu"
-Tra loi: "Gia thay doi lien tuc, ban kiem tra tren app AuraPC de biet gia chinh xac nhat nhe!"
-`;
-
-// Parse products from AI response
-function parseProductsFromResponse(text) {
-  const products = [];
-  
-  const patterns = [
-    /RTX\s*40[3-9]0(\s*Ti|\s*S)?/gi,
-    /GTX\s*16[5-6]0/gi,
-    /RX\s*[67][0-9]{3}(\s*XT)?/gi,
-    /Ryzen\s*[579]\s*\d{4}[X]?/gi,
-    /Core\s*i[3579][-_]?\d{4}[K]?/gi,
-    /Samsung\s*(990\s*PRO|980\s*PRO|870\s*EVO)/gi,
-    /Kingston\s*Fury/gi,
-    /NZXT\s*Kraken/gi,
-    /Noctua\s*NH-[DUL]/gi,
-    /Corsair\s*(RM\d{3,4}|iCUE)/gi,
-  ];
-  
-  const categories = {
-    'RTX': 'GPU', 'GTX': 'GPU', 'RX': 'GPU',
-    'Ryzen': 'CPU', 'Core': 'CPU',
-    'Samsung': 'SSD', 'Kingston': 'RAM',
-    'NZXT': 'Cooling', 'Noctua': 'Cooling', 'Corsair': 'PSU'
-  };
-  
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const name = match[0].trim();
-      if (name.length > 3) {
-        let category = 'SAN PHAM';
-        for (const [key, val] of Object.entries(categories)) {
-          if (name.includes(key)) { category = val; break; }
-        }
-        if (!products.some(p => p.name.includes(name.split(' ')[0]))) {
-          products.push({ name, category, image: null });
-        }
-      }
+// Fetch products from AuraPC API
+async function fetchAuraPCProducts() {
+  try {
+    const response = await Promise.race([
+      fetch(`${AURAPC_API}/products?page=1&limit=100`, {
+        headers: { 'Content-Type': 'application/json' }
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('AuraPC timeout')), 10000)
+      )
+    ]);
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    
+    // Extract products from various response formats
+    let products = [];
+    
+    if (data.products && Array.isArray(data.products)) {
+      products = data.products;
+    } else if (data.items && Array.isArray(data.items)) {
+      products = data.items;
+    } else if (Array.isArray(data)) {
+      products = data;
     }
+    
+    return products.map(p => ({
+      id: p.id || p._id,
+      name: p.name,
+      price: p.price,
+      originalPrice: p.originalPrice || p.price,
+      image: p.image || p.thumbnail || p.images?.[0],
+      category: p.category?.name || p.category || 'San pham',
+      brand: p.brand,
+      rating: p.rating || p.rate || 0,
+      reviewCount: p.reviewCount || p.reviews || 0,
+      inStock: p.inStock !== false && p.stock > 0
+    }));
+  } catch (e) {
+    console.error('Error fetching AuraPC products:', e.message);
+    return null;
   }
-  
-  return products.slice(0, 4);
 }
 
-// Fallback response generator - always works
+// Product catalog from AuraPC API
+let auraProductsCache = null;
+let auraProductsCacheTime = 0;
+const CACHE_TTL = 3600000; // 1 hour
+
+async function getAuraProducts() {
+  const now = Date.now();
+  if (auraProductsCache && (now - auraProductsCacheTime) < CACHE_TTL) {
+    return auraProductsCache;
+  }
+  
+  const products = await fetchAuraPCProducts();
+  if (products) {
+    auraProductsCache = products;
+    auraProductsCacheTime = now;
+    console.log(`Loaded ${products.length} AuraPC products`);
+  }
+  
+  return products;
+}
+
+// Search products by name
+async function searchProducts(query, limit = 10) {
+  try {
+    const response = await Promise.race([
+      fetch(`${AURAPC_API}/products?search=${encodeURIComponent(query)}&limit=${limit}`, {
+        headers: { 'Content-Type': 'application/json' }
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Search timeout')), 8000)
+      )
+    ]);
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    
+    let products = [];
+    if (data.products && Array.isArray(data.products)) {
+      products = data.products;
+    } else if (data.items && Array.isArray(data.items)) {
+      products = data.items;
+    } else if (Array.isArray(data)) {
+      products = data;
+    }
+    
+    return products.slice(0, limit).map(p => ({
+      id: p.id || p._id,
+      name: p.name,
+      price: p.price,
+      originalPrice: p.originalPrice || p.price,
+      image: p.image || p.thumbnail || p.images?.[0],
+      category: p.category?.name || p.category || 'San pham',
+      brand: p.brand,
+      rating: p.rating || p.rate || 0,
+      reviewCount: p.reviewCount || p.reviews || 0,
+      inStock: p.inStock !== false && p.stock > 0
+    }));
+  } catch (e) {
+    console.error('Search error:', e.message);
+    return [];
+  }
+}
+
+// Product catalog for AI context
+const SYSTEM_PROMPT_BASE = `Ban la AruBot - tro ly AI chuyen sach cua AuraPC Vietnam.
+
+NHIEM VU:
+1. Tra loi khach hang ve san pham, dich vu cua AuraPC
+2. Tim va goi y san pham phu hop dua tren yeu cau cua khach
+3. Huong dan mua hang, tra cuu don hang
+
+QUY TAC:
+1. Tra loi NGAN GON, THIEN TAI, DUNG CHUNG
+2. Khi goi y san pham, DUNG endpoint /api/search-products de tim san pham THAT
+3. Chi goi y san pham CO MAT TREN HETHONG (da duoc load tu API AuraPC)
+4. Neu khong tim duoc san pham, thong bao va goi y san pham tuong tu
+
+DANH MUC SAN PHAM (AuraPC):
+- PC Gaming & Office
+- CPU: Intel, AMD
+- GPU: NVIDIA GeForce, AMD Radeon
+- RAM: DDR4, DDR5
+- SSD/HDD: NVMe, SATA
+- Mainboard: Intel Z790/B760, AMD X670E/B650
+- Case: Lian Li, NZXT, Fractal Design
+- PSU: Corsair, Seasonic, be quiet!
+- Cooling: AIO, Air Cooler
+- Monitor: ASUS, LG, Samsung, Dell
+- Laptop: Gaming, Office, Mac alternatives
+- Phu kien: Ban phim, Chuot, Tai nghe, Webcam
+
+VI DU TRA LOI TOT:
+Hoi: "Toi can PC 20 trieu"
+Tra loi: "Voi 20 trieu, minh goi y:\n[SEARCH:PC gaming 20 trieu]\n\nBan co the tham khao cac cau hinh nay, hoac cho biet them yeu cau de minh goi y chinh xac hon nhe!"
+
+Hoi: "Tai nghe choi game nao tot"
+Tra loi: "[SEARCH:Tai nghe gaming]\n\nTai nghe gaming tot hien nay:\n- HyperX Cloud III\n- SteelSeries Arctis 7+\n- Razer BlackShark V2\n\nBan muon tim them khong?"
+
+Hoi: "Man hinh 27 inch tot"
+Tra loi: "[SEARCH:Man hinh 27 inch]\n\nVoi 27 inch, goi y:\n- ASUS ProArt PA278QV (WQHD, IPS)\n- LG 27GP850-B (2K, 165Hz, NanoIPS)\n- Samsung Odyssey G7 (QLED, 240Hz)\n\nBan can loai nao - van phong hay gaming?"
+
+## XU LY GOI Y SAN PHAM:
+Khi can goi y san pham cu the, tra ve cau tra loi chua:
+"[SEARCH:<tu khoa tim kiem>]"
+
+VD: [SEARCH:RTX 4070 gaming] se tim cac san pham RTX 4070
+`;
+
+// Parse search queries from AI response
+function extractSearchQueries(text) {
+  const queries = [];
+  const regex = /\[SEARCH:([^\]]+)\]/gi;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    queries.push(match[1].trim());
+  }
+  return queries;
+}
+
+// Remove search markers from text
+function cleanResponse(text) {
+  return text.replace(/\[SEARCH:[^\]]+\]/gi, '').trim();
+}
+
+// Fallback responses
 function generateFallbackResponse(message) {
   const lowerMsg = message.toLowerCase();
   
   if (lowerMsg.includes('chao') || lowerMsg.includes('xin chao') || lowerMsg.includes('hello') || lowerMsg.includes('hi')) {
-    return 'Xin chao! 👋 Toi la AruBot, tro ly AI cua AuraPC. Ban can toi tu van gi hom nay?';
+    return 'Xin chao! 👋 Toi la AruBot, tro ly AI cua AuraPC. Ban can toi tu van gi hom nay? Toi co the giup ban tim san pham, tu van cau hinh PC, hoac huong dan mua hang!';
   }
   
-  if (lowerMsg.includes('pc') || lowerMsg.includes('máy') || lowerMsg.includes('cấu hình')) {
+  if (lowerMsg.includes('pc') || lowerMsg.includes('máy') || lowerMsg.includes('cấu hình') || lowerMsg.includes('may tinh')) {
     if (lowerMsg.includes('15') || lowerMsg.includes('10')) {
-      return 'Voi 10-15 trieu, PC van phong:\n• CPU: Intel i3-14100\n• RAM: 8GB DDR4\n• SSD: 256GB NVMe\n\nBan muon them khong?';
+      return '[SEARCH:PC van phong 10 trieu]\n\nVoi 10-15 trieu, PC van phong tot:\n- Intel i3-14100, 8GB RAM, 256GB SSD\n- AMD Ryzen 5 5600G (co GPU tich hop)\n\nBan muon tim them khong?';
     } else if (lowerMsg.includes('20') || lowerMsg.includes('25')) {
-      return 'Voi 20-25 trieu, PC gaming 1080p:\n• CPU: Intel i5-14400\n• GPU: RTX 4060\n• RAM: 16GB DDR4\n\nBan muon cau hinh nao?';
+      return '[SEARCH:PC gaming 20 trieu]\n\nVoi 20-25 trieu, PC gaming 1080p:\n- Intel i5-14400 + RTX 4060\n- AMD Ryzen 5 7600X + RTX 4060\n\nBan muon tu van them khong?';
     } else if (lowerMsg.includes('30') || lowerMsg.includes('35') || lowerMsg.includes('40')) {
-      return 'Voi 30-40 trieu, PC manh:\n• CPU: Intel i7-14700K\n• GPU: RTX 4070 SUPER\n• RAM: 32GB DDR5\n\nCo muon tu van them khong?';
+      return '[SEARCH:PC gaming 30 trieu]\n\nVoi 30-40 trieu, PC manh:\n- Intel i7-14700K + RTX 4070 SUPER\n- AMD Ryzen 7 7800X3D + RTX 4070 Ti\n\nBan muon cau hinh nao hon?';
     }
-    return 'De tu van tot nhat, ban cho biet ngan sach bao nhieu?';
+    return '[SEARCH:PC gaming]\n\nDe tu van tot nhat, ban cho biet ngan sach va muc dich su dung nhe?';
   }
   
-  if (lowerMsg.includes('cpu') || lowerMsg.includes('vi xử lý')) {
-    if (lowerMsg.includes('intel') || lowerMsg.includes('i9') || lowerMsg.includes('i7')) {
-      return 'Intel Core i7-14700K la lua chon tot cho gaming cao cap. Ban co the tham khao them i5-14600K neu it hon.';
-    } else if (lowerMsg.includes('amd') || lowerMsg.includes('ryzen')) {
-      return 'AMD Ryzen 7 7800X3D la CPU gaming tot nhat. Neu cong viec, Ryzen 5 7600X cung du manh.';
+  if (lowerMsg.includes('cpu') || lowerMsg.includes('vi xử lý') || lowerMsg.includes('chip')) {
+    return '[SEARCH:CPU Intel AMD]\n\nBan muon tu van CPU Intel hay AMD? CPU nao phu hop cho gaming, cong viec hay ca hai?';
+  }
+  
+  if (lowerMsg.includes('gpu') || lowerMsg.includes('card') || lowerMsg.includes('đồ họa') || lowerMsg.includes('vidia') || lowerMsg.includes('rtx') || lowerMsg.includes('geforce')) {
+    return '[SEARCH:GPU RTX]\n\nBan can card cho muc dich gi?\n- Gaming 1080p: RTX 4060, RTX 3060\n- Gaming 1440p: RTX 4070 SUPER, RTX 4070 Ti SUPER\n- Gaming 4K: RTX 4080 SUPER, RTX 4090';
+  }
+  
+  if (lowerMsg.includes('ram') || lowerMsg.includes('bo nho')) {
+    return '[SEARCH:RAM DDR4 DDR5]\n\nBan can bao nhieu RAM?\n- 16GB DDR4: Du cho gaming 1080p\n- 32GB DDR5: Cho content creation, gaming 4K\n\nBan thich DDR4 hay DDR5?';
+  }
+  
+  if (lowerMsg.includes('ssd') || lowerMsg.includes('o cung')) {
+    return '[SEARCH:SSD NVMe]\n\nSSD NVMe hien nay rat pho bien:\n- Samsung 990 PRO (toc do cao nhat)\n- WD Black SN850X\n- Kingston Fury Renegade\n\nBan can dung luong nao - 512GB, 1TB hay 2TB?';
+  }
+  
+  if (lowerMsg.includes('case') || lowerMsg.includes('vỏ') || lowerMsg.includes('thùng máy')) {
+    return '[SEARCH:Case PC]\n\nCase dep va pho bien:\n- Lian Li O11 Dynamic EVO (tempered glass)\n- NZXT H7 Flow (airflow tot)\n- Fractal Torrent (nhiet doi)\n\nBan thich loai nao?';
+  }
+  
+  if (lowerMsg.includes('nguồn') || lowerMsg.includes('psu') || lowerMsg.includes('nguon')) {
+    return '[SEARCH:PSU Corsair Seasonic]\n\nPSU tot:\n- Corsair RM850x (850W, Gold)\n- Seasonic Focus GX (750W, Gold)\n- be quiet! Straight Power (800W, Platinum)\n\nBan dung card nao de minh tu van cong suat phu hop?';
+  }
+  
+  if (lowerMsg.includes('tản nhiệt') || lowerMsg.includes('cooler') || lowerMsg.includes('quạt')) {
+    return '[SEARCH:CPU Cooler]\n\nTan nhiet cho CPU:\n- AIO: NZXT Kraken X73, Corsair iCUE H150i\n- Air: Noctua NH-D15, be quiet! Dark Rock Pro 4\n\nBan dung CPU nao?';
+  }
+  
+  if (lowerMsg.includes('màn hình') || lowerMsg.includes('monitor') || lowerMsg.includes('man hinh')) {
+    if (lowerMsg.includes('27')) {
+      return '[SEARCH:Man hinh 27 inch]\n\nMan hinh 27 inch tot:\n- ASUS ProArt PA278QV (van phong)\n- LG 27GP850-B (gaming 165Hz)\n- Samsung Odyssey G7 (gaming 240Hz)';
+    } else if (lowerMsg.includes('32')) {
+      return '[SEARCH:Man hinh 32 inch]\n\nMan hinh 32 inch tot:\n- Samsung Odyssey G7 32 (QLED, 240Hz)\n- ASUS ROG Swift PG329Q (IPS, 175Hz)\n- Dell U3223QE (4K, USB-C)';
     }
-    return 'Ban muon tu van CPU Intel hay AMD?';
-  }
-  
-  if (lowerMsg.includes('gpu') || lowerMsg.includes('card') || lowerMsg.includes('đồ họa')) {
-    if (lowerMsg.includes('4090')) {
-      return 'RTX 4090 la card manh nhat, tuyet voi cho 4K gaming. Gia rat cao, neu 1440p thi RTX 4070 SUPER du di.';
-    } else if (lowerMsg.includes('4080')) {
-      return 'RTX 4080 SUPER la lua chon tot cho 4K gaming. Neu 1440p, RTX 4070 Ti SUPER tiet kiem hon.';
-    } else if (lowerMsg.includes('4060')) {
-      return 'RTX 4060 la card gaming 1080p tot voi gia pho thong. Neu nhieu hon, RTX 4070 SUPER cho 1440p.';
-    }
-    return 'Ban can card cho muc dich gi va ngan sach bao nhieu?';
-  }
-  
-  if (lowerMsg.includes('ram')) {
-    if (lowerMsg.includes('ddr5')) {
-      return 'DDR5 la lua chon cho build moi. Kingston Fury Beast DDR5 32GB (2x16GB) 6000MHz la lua chon tot.';
-    } else if (lowerMsg.includes('ddr4')) {
-      return 'DDR4 van tot cho build budget. Kingston Fury Beast DDR4 16GB (2x8GB) 3200MHz la du cho nhieu viec.';
-    }
-    return 'Ban can bao nhieu RAM? 16GB du, 32GB cho content creation.';
-  }
-  
-  if (lowerMsg.includes('ssd')) {
-    return 'Samsung 990 PRO 1TB NVMe la mot trong nhung SSD nhanh nhat. Neu can nhieu hon, phiên ban 2TB.';
-  }
-  
-  if (lowerMsg.includes('case') || lowerMsg.includes('vỏ')) {
-    return 'Lian Li O11 Dynamic EVO la case dep voi tempered glass. Neu can airflow tot, NZXT H7 Flow cung tot.';
-  }
-  
-  if (lowerMsg.includes('nguồn') || lowerMsg.includes('psu')) {
-    return 'Corsair RM850x la nguon 850W tot voi chat luong cao. Neu RTX 4090/4080, can 850W-1000W.';
-  }
-  
-  if (lowerMsg.includes('tản nhiệt') || lowerMsg.includes('cooler')) {
-    return 'Cho i9-14900K, NZXT Kraken X73 RGB 360mm la AIO tot nhat, hoac Noctua NH-D15 neu thich air cooler.';
-  }
-  
-  if (lowerMsg.includes('màn hình') || lowerMsg.includes('monitor')) {
-    return '1080p/144Hz: ASUS TUF VG249Q | 1440p/165Hz: LG 27GP850-B | 4K: ASUS ROG PG32UQX. Ban can loai nao?';
+    return '[SEARCH:Man hinh gaming]\n\nBan can man hinh cho van phong hay gaming? Kich thuoc bao nhieu inch?';
   }
   
   if (lowerMsg.includes('laptop')) {
     if (lowerMsg.includes('gaming')) {
-      return 'Laptop gaming tot: ASUS ROG Zephyrus G16, MSI Raider GE78, Lenovo Legion Pro 7. Ban co ngan sach nao?';
-    } else if (lowerMsg.includes('van phòng') || lowerMsg.includes('office')) {
-      return 'Laptop van phong tot: ASUS ZenBook 14 OLED (nhe, dep), Dell XPS 13 Plus, Lenovo Yoga Slim 7. Ban thich loai nao?';
+      return '[SEARCH:Laptop gaming]\n\nLaptop gaming tot:\n- ASUS ROG Zephyrus G16\n- MSI Raider GE78\n- Lenovo Legion Pro 7\n- Dell Alienware x16\n\nBan co ngan sach nao?';
+    } else if (lowerMsg.includes('van phong') || lowerMsg.includes('office') || lowerMsg.includes('sinh vien')) {
+      return '[SEARCH:Laptop van phong]\n\nLaptop van phong tot:\n- ASUS ZenBook 14 OLED (nhe, dep)\n- Dell XPS 13\n- Lenovo Yoga Slim 7\n- HP Pavilion 15\n\nBan thich loai nao?';
     }
-    return 'Ban can laptop cho muc dich gi?';
+    return '[SEARCH:Laptop]\n\nBan can laptop cho muc dich gi? Gaming, van phong, hay do hoa?';
   }
   
-  if (lowerMsg.includes('gia') || lowerMsg.includes('price') || lowerMsg.includes('bao nhieu')) {
-    return 'Gia san pham thay doi lien tuc. Ban kiem tra tren app AuraPC de biet gia chinh xac nhat nhe!';
+  if (lowerMsg.includes('tai nghe') || lowerMsg.includes('headphone') || lowerMsg.includes('tai nghe')) {
+    return '[SEARCH:Tai nghe gaming]\n\nTai nghe gaming tot:\n- HyperX Cloud III\n- SteelSeries Arctis 7+\n- Razer BlackShark V2 Pro\n- Corsair Virtuoso RGB\n\nBan thich over-ear hay in-ear?';
   }
   
-  return 'Toi chua hieu ro. Ban co the hoi ve CPU, GPU, RAM, SSD, Case, PSU, Man hinh, Laptop... Hoac cho biet ngan sach de toi go y?';
+  if (lowerMsg.includes('chuot') || lowerMsg.includes('mouse')) {
+    return '[SEARCH:Chuot gaming]\n\nChuot gaming tot:\n- Logitech G502 HERO\n- Razer DeathAdder V3\n- Corsair Harpoon RGB\n- SteelSeries Rival 3\n\nBan thich chuot day hay khong day?';
+  }
+  
+  if (lowerMsg.includes('ban phim') || lowerMsg.includes('keyboard')) {
+    return '[SEARCH:Ban phim gaming]\n\nBan phim gaming tot:\n- Keychron K2 (wireless, hot-swap)\n- Corsair K70 RGB\n- Razer Huntsman V3\n- Logitech G Pro X\n\nBan thich switch nao - Red, Blue hay Brown?';
+  }
+  
+  if (lowerMsg.includes('gia') || lowerMsg.includes('price') || lowerMsg.includes('bao nhieu') || lowerMsg.includes('giá')) {
+    return '[SEARCH:san pham]\n\nGia san pham thay doi lien tuc. Ban kiem tra tren app AuraPC de biet gia chinh xac nhat nhe!\n\nHoac ban cho biet san pham cu the, minh se tim gia cho ban ngay!';
+  }
+  
+  if (lowerMsg.includes('mua') && (lowerMsg.includes('cach') || lowerMsg.includes('huong dan') || lowerMsg.includes('lam sao'))) {
+    return 'De mua hang tren AuraPC:\n\n1️⃣ Chon san pham ban muon\n2️⃣ Nhan nut "Them vao gio hang"\n3️⃣ Ra gio hang, kiem tra san pham\n4️⃣ Chon dia chi giao hang\n5️⃣ Chon phuong thuc thanh toan\n6️⃣ Nhan "Dat hang"\n\nBan co the thanh toan qua:\n- ATM / Internet Banking\n- MoMo / ZaloPay\n- The tin dung (COD)\n\nCan gi them khong?';
+  }
+  
+  if (lowerMsg.includes('theo doi') || lowerMsg.includes('don hang') || lowerMsg.includes('tracking')) {
+    return 'De theo doi don hang:\n\n1️⃣ Vao trang "Don hang cua toi" (o Profile)\n2️⃣ Chon don hang ban muon xem\n3️⃣ Ban se thay trang thai: \n   - Cho xac nhan\n   - Dang chuan bi\n   - Dang giao\n   - Da giao\n\nNeu co van de, ban co the lien he ho tro qua:\n- Hotline: 1900 xxxx\n- Zalo: AuraPC Official';
+  }
+  
+  if (lowerMsg.includes('doi') || lowerMsg.includes('tra') || lowerMsg.includes('bao hanh')) {
+    return 'Chinh sach doi tra / bao hanh AuraPC:\n\n🔄 DOI TRA: 7 ngay dau tien (neu san pham loi tu nha san xuat)\n\n🛡️ BAO HANH:\n- CPU: 36 thang\n- GPU: 36 thang\n- Mainboard: 36 thang\n- RAM: Lifetime\n- SSD: 5 nam\n- Case: 12-24 thang\n- PSU: 5-10 nam\n\nBan co van de gi can ho tro?';
+  }
+  
+  return 'Cam on ban da hoi! Toi chua hieu ro yeu cau cua ban.\n\nBan co the hoi ve:\n- San pham cu the (CPU, GPU, RAM...)\n- Cau hinh PC theo ngan sach\n- Huong dan mua hang\n- Theo doi don hang\n- Chinh sach doi tra / bao hanh\n\nBan muon hoi gi?';
 }
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
-  // Set timeout to 60 seconds
   req.setTimeout(60000);
   
   try {
@@ -195,27 +297,38 @@ router.post('/chat', async (req, res) => {
 
     const apiToken = process.env.REPLICATE_API_TOKEN;
     
-    // Always use fallback first for fast response
+    // Generate response (fallback first)
     let reply = generateFallbackResponse(message);
-    let products = parseProductsFromResponse(reply);
+    let searchResults = [];
     
-    // Try AI if token exists (async, non-blocking)
-    if (apiToken) {
-      try {
-        const aiResponse = await callAI(apiToken, message, history);
-        if (aiResponse && aiResponse.length > reply.length) {
-          reply = aiResponse;
-          products = parseProductsFromResponse(reply);
-        }
-      } catch (e) {
-        console.error('AI error, using fallback:', e.message);
+    // Extract and process search queries
+    const searchQueries = extractSearchQueries(reply);
+    
+    // Clean reply
+    reply = cleanResponse(reply);
+    
+    // Search for products
+    for (const query of searchQueries) {
+      const results = await searchProducts(query, 5);
+      if (results.length > 0) {
+        searchResults = searchResults.concat(results);
+      }
+    }
+    
+    // Remove duplicates
+    const uniqueProducts = [];
+    const seenIds = new Set();
+    for (const p of searchResults) {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        uniqueProducts.push(p);
       }
     }
     
     return res.json({
       success: true,
       reply,
-      products: products,
+      products: uniqueProducts.slice(0, 10),
       timestamp: new Date().toISOString()
     });
 
@@ -225,95 +338,67 @@ router.post('/chat', async (req, res) => {
   }
 });
 
-// Call AI - separate function with timeout
-async function callAI(apiToken, message, history) {
+// Search products endpoint
+router.get('/search-products', async (req, res) => {
   try {
-    // Get model version
-    const versionId = await getModelVersion(apiToken);
-    if (!versionId) {
-      console.log('No model version, using fallback');
-      return null;
+    const { q, limit = 10 } = req.query;
+    
+    if (!q) {
+      return res.status(400).json({ error: 'Query required' });
     }
+    
+    const products = await searchProducts(q, parseInt(limit));
+    
+    return res.json({
+      success: true,
+      query: q,
+      products,
+      count: products.length
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    return res.status(500).json({ error: 'Search error' });
+  }
+});
 
-    // Build conversation context
-    let conversationText = '';
-    const recentHistory = history.slice(-6);
-    for (const msg of recentHistory) {
-      const role = msg.role === 'user' ? 'User' : 'Assistant';
-      conversationText += `${role}: ${msg.content}\n`;
-    }
-    conversationText += `User: ${message}\nAssistant:`;
+// Get all products (cached)
+router.get('/products', async (req, res) => {
+  try {
+    const products = await getAuraProducts();
+    
+    return res.json({
+      success: true,
+      products: products || [],
+      count: products?.length || 0
+    });
+  } catch (error) {
+    console.error('Products error:', error);
+    return res.status(500).json({ error: 'Products error' });
+  }
+});
 
-    // Create prediction
-    const createResponse = await Promise.race([
-      fetch(REPLICATE_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${apiToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          version: versionId,
-          input: {
-            prompt: `${SYSTEM_PROMPT}\n\n${conversationText}`,
-            max_tokens: 2048,
-            temperature: 0.7,
-            top_p: 0.9
-          }
-        })
-      }),
+// Get categories from AuraPC
+router.get('/categories', async (req, res) => {
+  try {
+    const response = await Promise.race([
+      fetch(`${AURAPC_API}/categories`),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('AI timeout')), 30000)
+        setTimeout(() => reject(new Error('Timeout')), 8000)
       )
     ]);
-
-    if (!createResponse.ok) {
-      console.log('AI API error:', createResponse.status);
-      return null;
-    }
-
-    const prediction = await createResponse.json();
-    const predictionId = prediction.id;
-
-    // Poll for completion with timeout
-    let reply = null;
-    const maxAttempts = 30;
-    const pollInterval = 2000;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, pollInterval));
-
-      const statusResponse = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
-        headers: { 'Authorization': `Token ${apiToken}` }
-      });
-
-      if (!statusResponse.ok) continue;
-
-      const statusData = await statusResponse.json();
-      
-      if (statusData.status === 'succeeded') {
-        reply = statusData.output?.[0] || statusData.output || null;
-        if (Array.isArray(reply)) reply = reply.join('');
-        break;
-      } else if (statusData.status === 'failed') {
-        console.log('AI prediction failed');
-        break;
-      }
-    }
-
-    return reply;
-  } catch (e) {
-    console.error('callAI error:', e.message);
-    return null;
+    
+    if (!response.ok) throw new Error('API error');
+    
+    const data = await response.json();
+    
+    return res.json({
+      success: true,
+      categories: data
+    });
+  } catch (error) {
+    console.error('Categories error:', error);
+    return res.status(500).json({ error: 'Categories error' });
   }
-}
-
-// Get product catalog
-router.get('/catalog', (req, res) => {
-  res.json({
-    success: true,
-    catalog: PRODUCT_CATALOG.trim()
-  });
 });
 
 module.exports = router;
