@@ -5,14 +5,19 @@ const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
 
 // Get latest model version hash
 async function getModelVersion(token) {
-  const response = await fetch('https://api.replicate.com/v1/models/google/gemini-2.5-flash', {
-    headers: { 'Authorization': `Token ${token}` }
-  });
-  const data = await response.json();
-  return data.latest_version?.id;
+  try {
+    const response = await fetch('https://api.replicate.com/v1/models/google/gemini-2.5-flash', {
+      headers: { 'Authorization': `Token ${token}` }
+    });
+    const data = await response.json();
+    return data.latest_version?.id;
+  } catch (e) {
+    console.error('Error getting model version:', e.message);
+    return null;
+  }
 }
 
-// Product catalog - concise version for AI context
+// Product catalog - concise version
 const PRODUCT_CATALOG = `
 CPU: Intel i3-14100, i5-14400/14600K, i7-14700K, i9-14900K | AMD Ryzen 5 5600X/7600X, Ryzen 7 7700X/7800X3D, Ryzen 9 7900X/7950X
 GPU: NVIDIA RTX 3050, 3060, 4060, 4070/4070S, 4080S, 4090 | AMD RX 6600, 6700, 6800, 6900, 7800XT, 7900XT/XTX
@@ -49,7 +54,7 @@ Hoi: "RTX 4070 gia bao nhieu"
 Tra loi: "Gia thay doi lien tuc, ban kiem tra tren app AuraPC de biet gia chinh xac nhat nhe!"
 `;
 
-// Parse suggested products from AI response
+// Parse products from AI response
 function parseProductsFromResponse(text) {
   const products = [];
   
@@ -92,115 +97,7 @@ function parseProductsFromResponse(text) {
   return products.slice(0, 4);
 }
 
-// Chat endpoint
-router.post('/chat', async (req, res) => {
-  try {
-    const { message, history = [] } = req.body;
-
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    const apiToken = process.env.REPLICATE_API_TOKEN;
-    
-    // Fallback when no API token
-    if (!apiToken) {
-      const reply = generateFallbackResponse(message);
-      const products = parseProductsFromResponse(reply);
-      
-      return res.json({
-        success: true,
-        reply,
-        products: products,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Build conversation context
-    let conversationText = '';
-    const recentHistory = history.slice(-6); // Fewer history for shorter prompt
-    for (const msg of recentHistory) {
-      const role = msg.role === 'user' ? 'User' : 'Assistant';
-      conversationText += `${role}: ${msg.content}\n`;
-    }
-    conversationText += `User: ${message}\nAssistant:`;
-
-    // Get model version
-    const versionId = await getModelVersion(apiToken);
-    if (!versionId) {
-      return res.status(502).json({ error: 'Cannot get model version' });
-    }
-
-    // Create prediction with more tokens
-    const createResponse = await fetch(REPLICATE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${apiToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        version: versionId,
-        input: {
-          prompt: `${SYSTEM_PROMPT}\n\n${conversationText}`,
-          max_tokens: 2048, // Increased from 1024
-          temperature: 0.7,
-          top_p: 0.9
-        }
-      })
-    });
-
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text();
-      console.error('Replicate API error:', createResponse.status, errorText);
-      return res.status(502).json({ error: 'AI service error' });
-    }
-
-    const prediction = await createResponse.json();
-    const predictionId = prediction.id;
-
-    // Poll for completion
-    let reply = 'Xin loi, toi khong the tra loi luc nay.';
-    const maxAttempts = 60;
-    const pollInterval = 2000;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, pollInterval));
-
-      const statusResponse = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
-        headers: { 'Authorization': `Token ${apiToken}` }
-      });
-
-      if (!statusResponse.ok) continue;
-
-      const statusData = await statusResponse.json();
-      
-      if (statusData.status === 'succeeded') {
-        reply = statusData.output?.[0] || statusData.output || 'Khong co phan hoi.';
-        if (Array.isArray(reply)) reply = reply.join('');
-        break;
-      } else if (statusData.status === 'failed') {
-        reply = 'Xin loi, AI dang ban. Vui long thu lai.';
-        break;
-      }
-    }
-
-    // Parse products from response
-    const products = parseProductsFromResponse(reply);
-
-    res.json({
-      success: true,
-      reply,
-      products: products,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Fallback response generator
+// Fallback response generator - always works
 function generateFallbackResponse(message) {
   const lowerMsg = message.toLowerCase();
   
@@ -282,6 +179,133 @@ function generateFallbackResponse(message) {
   }
   
   return 'Toi chua hieu ro. Ban co the hoi ve CPU, GPU, RAM, SSD, Case, PSU, Man hinh, Laptop... Hoac cho biet ngan sach de toi go y?';
+}
+
+// Chat endpoint
+router.post('/chat', async (req, res) => {
+  // Set timeout to 60 seconds
+  req.setTimeout(60000);
+  
+  try {
+    const { message, history = [] } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const apiToken = process.env.REPLICATE_API_TOKEN;
+    
+    // Always use fallback first for fast response
+    let reply = generateFallbackResponse(message);
+    let products = parseProductsFromResponse(reply);
+    
+    // Try AI if token exists (async, non-blocking)
+    if (apiToken) {
+      try {
+        const aiResponse = await callAI(apiToken, message, history);
+        if (aiResponse && aiResponse.length > reply.length) {
+          reply = aiResponse;
+          products = parseProductsFromResponse(reply);
+        }
+      } catch (e) {
+        console.error('AI error, using fallback:', e.message);
+      }
+    }
+    
+    return res.json({
+      success: true,
+      reply,
+      products: products,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Chat error:', error);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Call AI - separate function with timeout
+async function callAI(apiToken, message, history) {
+  try {
+    // Get model version
+    const versionId = await getModelVersion(apiToken);
+    if (!versionId) {
+      console.log('No model version, using fallback');
+      return null;
+    }
+
+    // Build conversation context
+    let conversationText = '';
+    const recentHistory = history.slice(-6);
+    for (const msg of recentHistory) {
+      const role = msg.role === 'user' ? 'User' : 'Assistant';
+      conversationText += `${role}: ${msg.content}\n`;
+    }
+    conversationText += `User: ${message}\nAssistant:`;
+
+    // Create prediction
+    const createResponse = await Promise.race([
+      fetch(REPLICATE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          version: versionId,
+          input: {
+            prompt: `${SYSTEM_PROMPT}\n\n${conversationText}`,
+            max_tokens: 2048,
+            temperature: 0.7,
+            top_p: 0.9
+          }
+        })
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('AI timeout')), 30000)
+      )
+    ]);
+
+    if (!createResponse.ok) {
+      console.log('AI API error:', createResponse.status);
+      return null;
+    }
+
+    const prediction = await createResponse.json();
+    const predictionId = prediction.id;
+
+    // Poll for completion with timeout
+    let reply = null;
+    const maxAttempts = 30;
+    const pollInterval = 2000;
+
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise(r => setTimeout(r, pollInterval));
+
+      const statusResponse = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
+        headers: { 'Authorization': `Token ${apiToken}` }
+      });
+
+      if (!statusResponse.ok) continue;
+
+      const statusData = await statusResponse.json();
+      
+      if (statusData.status === 'succeeded') {
+        reply = statusData.output?.[0] || statusData.output || null;
+        if (Array.isArray(reply)) reply = reply.join('');
+        break;
+      } else if (statusData.status === 'failed') {
+        console.log('AI prediction failed');
+        break;
+      }
+    }
+
+    return reply;
+  } catch (e) {
+    console.error('callAI error:', e.message);
+    return null;
+  }
 }
 
 // Get product catalog
