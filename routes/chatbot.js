@@ -4,6 +4,102 @@ const router = express.Router();
 const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
 const AURAPC_API = 'https://aurapc-backend.onrender.com/api';
 
+// === USER TIER SYSTEM ===
+const USER_TIERS = {
+  BRONZE: { name: 'Bronze', minSpend: 0, maxSpend: 5000000, color: '#CD7F32', discount: 0 },
+  SILVER: { name: 'Silver', minSpend: 5000000, maxSpend: 15000000, color: '#C0C0C0', discount: 2 },
+  GOLD: { name: 'Gold', minSpend: 15000000, maxSpend: 30000000, color: '#FFD700', discount: 5 },
+  VIP: { name: 'VIP', minSpend: 30000000, maxSpend: Infinity, color: '#E0115F', discount: 10 }
+};
+
+// Calculate user tier based on total spent
+function calculateUserTier(totalSpent) {
+  if (totalSpent >= USER_TIERS.VIP.minSpend) return USER_TIERS.VIP;
+  if (totalSpent >= USER_TIERS.GOLD.minSpend) return USER_TIERS.GOLD;
+  if (totalSpent >= USER_TIERS.SILVER.minSpend) return USER_TIERS.SILVER;
+  return USER_TIERS.BRONZE;
+}
+
+// Get user info and spending from AuraPC
+async function getUserInfo(userId, authToken) {
+  if (!userId || !authToken) return null;
+  
+  try {
+    // Get user profile
+    const userResponse = await Promise.race([
+      fetch(`${AURAPC_API}/users/me`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('User API timeout')), 5000))
+    ]);
+    
+    if (!userResponse.ok) return null;
+    const user = await userResponse.json();
+    
+    // Get user orders to calculate total spent
+    const ordersResponse = await Promise.race([
+      fetch(`${AURAPC_API}/orders`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Orders API timeout')), 5000))
+    ]);
+    
+    let totalSpent = 0;
+    let orderCount = 0;
+    let purchasedCategories = [];
+    
+    if (ordersResponse.ok) {
+      const orders = await ordersResponse.json();
+      if (Array.isArray(orders)) {
+        orderCount = orders.length;
+        orders.forEach(order => {
+          if (order.status === 'delivered' || order.isPaid) {
+            totalSpent += order.total || 0;
+          }
+          // Extract categories from order items
+          if (order.items) {
+            order.items.forEach(item => {
+              if (item.category && !purchasedCategories.includes(item.category)) {
+                purchasedCategories.push(item.category);
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    const tier = calculateUserTier(totalSpent);
+    
+    return {
+      id: user._id,
+      phoneNumber: user.phoneNumber,
+      name: user.profile?.fullName || user.username || 'Khach hang',
+      avatar: user.avatar,
+      tier,
+      totalSpent,
+      orderCount,
+      purchasedCategories
+    };
+  } catch (e) {
+    console.error('Error getting user info:', e.message);
+    return null;
+  }
+}
+
+// Get budget range from tier for recommendations
+function getBudgetRangeForTier(tier) {
+  switch (tier.name) {
+    case 'VIP':
+      return { min: 25000000, max: 100000000, label: 'cao cấp' };
+    case 'GOLD':
+      return { min: 15000000, max: 40000000, label: 'trung cao' };
+    case 'SILVER':
+      return { min: 8000000, max: 20000000, label: 'trung bình' };
+    default:
+      return { min: 5000000, max: 15000000, label: 'phổ thông' };
+  }
+}
+
 // Get latest model version hash
 async function getModelVersion(token) {
   try {
@@ -213,22 +309,24 @@ function searchFallbackProducts(query) {
 }
 
 // Fallback responses
-function generateFallbackResponse(message) {
+function generateFallbackResponse(message, userInfo = null) {
   const lowerMsg = message.toLowerCase();
   
+  // Get budget range based on user tier
+  const budget = userInfo ? getBudgetRangeForTier(userInfo.tier) : { min: 10000000, max: 20000000, label: 'phổ thông' };
+  
   if (lowerMsg.includes('chao') || lowerMsg.includes('xin chao') || lowerMsg.includes('hello') || lowerMsg.includes('hi')) {
-    return 'Xin chao! 👋 Toi la AruBot, tro ly AI cua AuraPC. Ban can toi tu van gi hom nay? Toi co the giup ban tim san pham, tu van cau hinh PC, hoac huong dan mua hang!';
+    let greeting = 'Xin chao! 👋 Toi la AruBot, tro ly AI cua AuraPC.';
+    if (userInfo) {
+      greeting += ` Chao ${userInfo.name}! Ban la thanh vien ${userInfo.tier.name} (${userInfo.orderCount} don hang, ${(userInfo.totalSpent / 1000000).toFixed(1)} trieu VND).`;
+    }
+    greeting += ' Ban can toi tu van gi hom nay?';
+    return greeting;
   }
   
   if (lowerMsg.includes('pc') || lowerMsg.includes('máy') || lowerMsg.includes('cấu hình') || lowerMsg.includes('may tinh')) {
     if (lowerMsg.includes('15') || lowerMsg.includes('10')) {
       return '[SEARCH:PC van phong 10 trieu]\n\nVoi 10-15 trieu, PC van phong tot:\n- Intel i3-14100, 8GB RAM, 256GB SSD\n- AMD Ryzen 5 5600G (co GPU tich hop)\n\nBan muon tim them khong?';
-    } else if (lowerMsg.includes('20') || lowerMsg.includes('25')) {
-      return '[SEARCH:PC gaming 20 trieu]\n\nVoi 20-25 trieu, PC gaming 1080p:\n- Intel i5-14400 + RTX 4060\n- AMD Ryzen 5 7600X + RTX 4060\n\nBan muon tu van them khong?';
-    } else if (lowerMsg.includes('30') || lowerMsg.includes('35') || lowerMsg.includes('40')) {
-      return '[SEARCH:PC gaming 30 trieu]\n\nVoi 30-40 trieu, PC manh:\n- Intel i7-14700K + RTX 4070 SUPER\n- AMD Ryzen 7 7800X3D + RTX 4070 Ti\n\nBan muon cau hinh nao hon?';
-    }
-    return '[SEARCH:PC gaming]\n\nDe tu van tot nhat, ban cho biet ngan sach va muc dich su dung nhe?';
   }
   
   if (lowerMsg.includes('cpu') || lowerMsg.includes('vi xử lý') || lowerMsg.includes('chip')) {
@@ -313,7 +411,7 @@ router.post('/chat', async (req, res) => {
   req.setTimeout(60000);
   
   try {
-    const { message, history = [] } = req.body;
+    const { message, history = [], userId, authToken } = req.body;
 
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required' });
@@ -321,8 +419,14 @@ router.post('/chat', async (req, res) => {
 
     const apiToken = process.env.REPLICATE_API_TOKEN;
     
+    // Get user info if authenticated
+    let userInfo = null;
+    if (userId && authToken) {
+      userInfo = await getUserInfo(userId, authToken);
+    }
+    
     // Generate response (fallback first)
-    let reply = generateFallbackResponse(message);
+    let reply = generateFallbackResponse(message, userInfo);
 
     // Extract and process search queries
     const searchQueries = extractSearchQueries(reply);
@@ -341,6 +445,14 @@ router.post('/chat', async (req, res) => {
         const fallbackResults = searchFallbackProducts(query);
         searchResults = searchResults.concat(fallbackResults);
       }
+    }
+    
+    // If user is authenticated and asking for PC recommendation, adjust budget based on tier
+    if (userInfo && (message.toLowerCase().includes('pc') || message.toLowerCase().includes('mua') || message.toLowerCase().includes('tu van'))) {
+      const budget = getBudgetRangeForTier(userInfo.tier);
+      reply = `Xin chao ${userInfo.name}! 🌟\n\n` +
+        `Cua hang nhan thay ban la thanh vien **${userInfo.tier.name}** (da chi tieu ${(userInfo.totalSpent / 1000000).toFixed(1)} trieu VND).\n\n` +
+        `Voi ngan sach ${budget.label}, minh goi y:\n` + reply;
     }
     
     // Remove duplicates
