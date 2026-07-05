@@ -190,16 +190,16 @@ function cleanResponse(text) {
 
 // Fallback products (hardcoded for demo - replace with API data in production)
 const FALLBACK_PRODUCTS = [
-  { id: '1', name: 'PC Gaming Aura RTX 4060', price: 18990000, category: 'PC Gaming', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=PC+RTX+4060', brand: 'AuraPC', rating: 4.8, inStock: true },
-  { id: '2', name: 'Intel Core i5-14400F', price: 5490000, category: 'CPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Intel+i5-14400F', brand: 'Intel', rating: 4.7, inStock: true },
-  { id: '3', name: 'NVIDIA RTX 4070 Super', price: 15990000, category: 'GPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RTX+4070+Super', brand: 'NVIDIA', rating: 4.9, inStock: true },
-  { id: '4', name: 'RAM DDR5 32GB Corsair', price: 2990000, category: 'RAM', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RAM+DDR5+32GB', brand: 'Corsair', rating: 4.6, inStock: true },
-  { id: '5', name: 'SSD Samsung 990 PRO 1TB', price: 3290000, category: 'SSD', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=SSD+990+PRO', brand: 'Samsung', rating: 4.8, inStock: true },
-  { id: '6', name: 'ASUS ROG Strix RTX 4080', price: 32990000, category: 'GPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=RTX+4080', brand: 'ASUS', rating: 4.9, inStock: true },
-  { id: '7', name: 'AMD Ryzen 7 7800X3D', price: 12490000, category: 'CPU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Ryzen+7800X3D', brand: 'AMD', rating: 4.9, inStock: true },
-  { id: '8', name: 'Monitor LG 27GP850 165Hz', price: 8990000, category: 'Monitor', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=LG+27GP850', brand: 'LG', rating: 4.7, inStock: true },
-  { id: '9', name: 'Case Lian Li O11 Dynamic', price: 4590000, category: 'Case', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Lian+Li+O11', brand: 'Lian Li', rating: 4.8, inStock: true },
-  { id: '10', name: 'PSU Corsair RM850x 850W', price: 3990000, category: 'PSU', image: 'https://via.placeholder.com/300x200/1a1a2e/00d4ff?text=Corsair+RM850x', brand: 'Corsair', rating: 4.9, inStock: true }
+  { id: '1', name: 'PC Gaming Aura RTX 4060', price: 18990000, category: 'PC Gaming', image: 'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?w=400&h=300&fit=crop', brand: 'AuraPC', rating: 4.8, inStock: true },
+  { id: '2', name: 'Intel Core i5-14400F', price: 5490000, category: 'CPU', image: 'https://images.unsplash.com/photo-1555680202-c86f0e12f086?w=400&h=300&fit=crop', brand: 'Intel', rating: 4.7, inStock: true },
+  { id: '3', name: 'NVIDIA RTX 4070 Super', price: 15990000, category: 'GPU', image: 'https://images.unsplash.com/photo-1591488320449-011701bb6704?w=400&h=300&fit=crop', brand: 'NVIDIA', rating: 4.9, inStock: true },
+  { id: '4', name: 'RAM DDR5 32GB Corsair', price: 2990000, category: 'RAM', image: 'https://images.unsplash.com/photo-1562976540-1502c2145186?w=400&h=300&fit=crop', brand: 'Corsair', rating: 4.6, inStock: true },
+  { id: '5', name: 'SSD Samsung 990 PRO 1TB', price: 3290000, category: 'SSD', image: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?w=400&h=300&fit=crop', brand: 'Samsung', rating: 4.8, inStock: true },
+  { id: '6', name: 'ASUS ROG Strix RTX 4080', price: 32990000, category: 'GPU', image: 'https://images.unsplash.com/photo-1587202372634-32705e3bf49c?w=400&h=300&fit=crop', brand: 'ASUS', rating: 4.9, inStock: true },
+  { id: '7', name: 'AMD Ryzen 7 7800X3D', price: 12490000, category: 'CPU', image: 'https://images.unsplash.com/photo-1555680202-c86f0e12f086?w=400&h=300&fit=crop', brand: 'AMD', rating: 4.9, inStock: true },
+  { id: '8', name: 'Monitor LG 27GP850 165Hz', price: 8990000, category: 'Monitor', image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=400&h=300&fit=crop', brand: 'LG', rating: 4.7, inStock: true },
+  { id: '9', name: 'Case Lian Li O11 Dynamic', price: 4590000, category: 'Case', image: 'https://images.unsplash.com/photo-1587202372616-b43abea06c2a?w=400&h=300&fit=crop', brand: 'Lian Li', rating: 4.8, inStock: true },
+  { id: '10', name: 'PSU Corsair RM850x 850W', price: 3990000, category: 'PSU', image: 'https://images.unsplash.com/photo-1591290619762-6a4683f9c277?w=400&h=300&fit=crop', brand: 'Corsair', rating: 4.9, inStock: true }
 ];
 
 // Search fallback products
