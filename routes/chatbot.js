@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router';
+const router = express.Router();
 
 const REPLICATE_API_URL = 'https://api.replicate.com/v1/models/google/gemini-2.0-flash-exp:prediction';
 
